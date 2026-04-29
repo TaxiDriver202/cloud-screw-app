@@ -18,6 +18,9 @@ cur = dbconn.cursor()
 cur.execute("CREATE TABLE IF NOT EXISTS data(id int, temperature float, humidity float, pressure float, date timestamptz)")
 dbconn.commit()
 
+UPDATE_INTERVAL: int = 10
+ADMIN_PASSWORD: str = "javasdk8"
+
 updata_counter: int = 0
 
 tag_names = []
@@ -51,7 +54,7 @@ def update_data(data):
     packets = {tag:val for (tag, val) in enumerate(RTags.values())}
 
     updata_counter += 1
-    if updata_counter > 25:
+    if updata_counter > UPDATE_INTERVAL:
         update_database()
         updata_counter = 0
     socketio.emit('data_update', packets)
@@ -139,7 +142,7 @@ def admin():
     
     passwd: str = request.args.get("pass", type=str)
     weeks: int = request.args.get("weeks", type=int)
-    if passwd == "javasdk8" and weeks >= 0:
+    if passwd == ADMIN_PASSWORD and weeks >= 0:
         try:
             cur.execute(f"DELETE FROM data WHERE date < datetime('now', 'localtime', '-{weeks*7} days');")
             dbconn.commit()
