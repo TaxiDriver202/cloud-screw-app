@@ -1,67 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
+{% extends "base.html" %}
+{# SPDX-FileCopyrightText: 2025 Topias Silfverhuth
+   SPDX-License-Identifier: MIT #}
 
-        
-    </head>
-    <body>
+{% block title %}Admin · Ruuvi Dashboard{% endblock %}
 
-        <div class="center container">
-            <form id="del">
+{% block content %}
+    <header class="page-head">
+        <h1 class="page-title">Admin</h1>
+        <div class="page-meta">Housekeeping and sensor labels</div>
+    </header>
 
-                <label for="pass">Super secret password:</label>
-                <input type="text" id="pass" name="pass"><br>
-                
-                <label for="weeks">Delete data older than:</label>
-                <input type="number" id="weeks" name="weeks">
-                <label>weeks</label>
-                <input type="submit">
+    <div class="stack">
+        <section class="panel">
+            <h2>Prune history</h2>
+            <p class="panel-note">Permanently deletes stored readings older than the given age.</p>
+            <form id="del" method="get">
+                <div class="form-row">
+                    <label for="pass">Password</label>
+                    <input class="field" type="password" id="pass" name="pass" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label for="weeks">Delete older than</label>
+                    <input class="field num" type="number" id="weeks" name="weeks" min="0" style="max-width: 110px">
+                    <span class="suffix">weeks</span>
+                </div>
+                <button class="btn" type="submit">Delete data</button>
             </form>
+            <div class="notice" id="thankyou">Done — old readings were removed.</div>
+        </section>
 
-            <div id="thankyou">
-                
-            </div>
-            <script>
-                const form = document.querySelector("#del");
-                const ty = document.getElementById("thankyou");
-    
-                function thanks(){
-                    const txt = document.createElement('h1');
-                    txt.innerHTML = `
-                    Success!
-                    `;
-                    ty.append(txt);
-                    localStorage.setItem("input", "true");
-                }
-                form.addEventListener("submit", thanks);
-                function thx(){
-                    if (localStorage.getItem("input") == "true") {
-                        thanks();
-                        localStorage.clear();
-                    }
-                }
-                window.onload = thx;
-            </script>
-        </div>
-
-        <div class="container" style="padding-top: 18px; justify-self:auto; margin:auto;">
-             <form id="tags" style="right:20%">
-
-                <label for="tag0">Tag 0:</label>
-                <input type="text" id="tag0" name="tag0"><br>
-                
-                <label for="tag1">Tag 1:</label>
-                <input type="text" id="tag1" name="tag1"><br>
-
-                <label for="tag2">Tag 2:</label>
-                <input type="text" id="tag2" name="tag2"><br>
-
-                <label for="tag3">Tag 3:</label>
-                <input type="text" id="tag3" name="tag3"><br>
-                
-                <input type="submit">
+        <section class="panel">
+            <h2>Sensor names</h2>
+            <p class="panel-note">Labels shown on the dashboard cards and in the graph legend.
+               Leave a field empty to keep the current name.</p>
+            <form id="tags" method="get">
+                {% for i in range(4) %}
+                <div class="form-row">
+                    <label for="tag{{ i }}">Tag {{ i }}</label>
+                    <input class="field" type="text" id="tag{{ i }}" name="tag{{ i }}"
+                           placeholder="{{ tag_names[i] if tag_names | length > i and tag_names[i] else 'Tag ' ~ i }}">
+                </div>
+                {% endfor %}
+                <button class="btn" type="submit">Save names</button>
             </form>
-        </div>
-    </body>
-</html>
+        </section>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var form = document.getElementById("del");
+        var notice = document.getElementById("thankyou");
+
+        form.addEventListener("submit", function () {
+            try { localStorage.setItem("pruned", "true"); } catch (e) { /* ignore */ }
+        });
+
+        try {
+            if (localStorage.getItem("pruned") === "true") {
+                notice.classList.add("show");
+                localStorage.removeItem("pruned");
+            }
+        } catch (e) { /* ignore */ }
+    })();
+</script>
+{% endblock %}

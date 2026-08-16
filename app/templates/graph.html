@@ -1,198 +1,206 @@
-<!DOCTYPE html>
-<html lang="en">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <head>
-    <title>Graph</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+{% extends "base.html" %}
+{# SPDX-FileCopyrightText: 2025 Topias Silfverhuth
+   SPDX-License-Identifier: MIT #}
+
+{% block title %}{{ metric_label }} · Ruuvi Dashboard{% endblock %}
+
+{% block head %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@^2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@^1"></script>
-    <link rel="shortcut icon" href="/static/favicon.png">
     <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@latest/dist/turbo.es2017-esm.min.js"></script>
-    <link rel="stylesheet" href="/static/graph.css">
-    </head>
-<body>
-    <!-- Sidebar -->
-    <div class="sidebar">
-        <div class="sidebar-toggle" onclick="toggleSidebar()">
-            <span id="toggle-icon">&#9776;</span>
+{% endblock %}
+
+{% block content %}
+    <header class="page-head">
+        <h1 class="page-title">
+            {{ metric_label }}
+            <span class="unit">{{ unit }}</span>
+        </h1>
+        <div class="page-meta">
+            Showing <span class="num">{{ range_label }}</span>
         </div>
-        <div class="sidebar-header">
-            <h3>Ruuvi Dashboard</h3>
+    </header>
+
+    <div class="controls">
+        <div class="segmented" role="group" aria-label="Time range">
+            {% for preset in presets %}
+                <a href="?value={{ preset.value }}&interval={{ preset.interval }}"
+                   class="{% if preset.active %}active{% endif %}"
+                   {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
+            {% endfor %}
         </div>
-        <nav>
-            <a href="/dashboard" class="nav-link" data-turbo-action="disable" data-turbo="false">
-                <span>Dash</span>
-            </a>
-            <a href="/graph/temperature" class="nav-link active" data-turbo-frame="main">
-                <span>Temp</span>
-            </a>
-            <a href="/graph/humidity" class="nav-link" data-turbo-frame="main">
-                <span>Humidity</span>
-            </a>
-            <a href="/graph/pressure" class="nav-link" data-turbo-frame="main">
-                <span>Pressure</span>
-            </a>
-        </nav>
-        <!-- Dark mode toggle switch -->
-        <div class="dark-mode-toggle">
-            <label for="darkModeSwitch">Dark Mode:</label>
-            <label class="switch">
-                <input type="checkbox" id="darkModeSwitch" onclick="toggleDarkMode()">
-                <span class="slider"></span>
-            </label>
-        </div>
+
+        <form class="range-form" method="get">
+            <span class="eyebrow">Custom</span>
+            <input class="field num" type="number" name="value" min="1" max="520"
+                   value="{{ value }}" aria-label="Range length">
+            <select class="field" name="interval" aria-label="Range unit"
+                    onchange="this.form.submit()">
+                <option value="hours" {% if interval == 'hours' %}selected{% endif %}>hours</option>
+                <option value="days" {% if interval == 'days' %}selected{% endif %}>days</option>
+                <option value="weeks" {% if interval == 'weeks' %}selected{% endif %}>weeks</option>
+            </select>
+            <button class="btn" type="submit">Apply</button>
+        </form>
     </div>
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <div class="time-controls-container">
-            <div class="time-range-buttons">
-                <a href="?value=1&interval=hours" class="time-range-btn">1 Hour</a>
-                <a href="?value=1&interval=days" class="time-range-btn">1 Day</a>
-                <a href="?value=1&interval=weeks" class="time-range-btn">1 Week</a>
-                <a href="?value=4&interval=weeks" class="time-range-btn">1 Month</a>
-            </div>
-            <div class="interval-form">
-                <form>
-                    <input type="number" id="weeks" name="value" min="0" placeholder="Value">
-                    <select name="interval" class="interval-select" onchange="this.form.submit()">
-                        <option value="weeks" {% if request.args.get('interval', 'weeks') == 'weeks' %}selected{% endif %}>weeks</option>
-                        <option value="days" {% if request.args.get('interval') == 'days' %}selected{% endif %}>days</option>
-                        <option value="hours" {% if request.args.get('interval') == 'hours' %}selected{% endif %}>hours</option>
-                    </select>
-                </form>
-            </div>
+    {% if all_values %}
+    <section class="graph-panel">
+        <div class="graph-canvas">
+            <canvas id="myChart" aria-label="{{ metric_label }} over time"></canvas>
         </div>
-
-        <div class="container-fluid graph">
-            <canvas id="myChart"></canvas>
+        <div class="graph-foot">
+            <span class="eyebrow">{{ all_tags | length }} sensor{{ '' if all_tags | length == 1 else 's' }}
+                · {{ point_count }} samples</span>
+            <span class="eyebrow">{{ metric_label }} in {{ unit }}</span>
         </div>
+    </section>
+    {% else %}
+    <div class="empty">
+        <strong>No {{ metric_label | lower }} history for this range</strong>
+        <p>Nothing was recorded in the {{ range_label }}. Try a longer range, or check that the
+           gateway is posting to <span class="num">/request</span>.</p>
     </div>
+    {% endif %}
+{% endblock %}
 
-    <script>
-        var ctx = document.getElementById("myChart");
-        var allValues = {{ all_values | tojson | safe }};
-        var allTags = {{ all_tags | tojson | safe }};
+{% block scripts %}
+{% if all_values %}
+<script>
+    (function () {
+        var allValues = {{ all_values | tojson }};
+        var allTags = {{ all_tags | tojson }};
+        var unit = {{ unit | tojson }};
+        var chart = null;
 
-        function getColor(index) {
-            const colors = [
-                'rgb(75, 192, 192)',  
-                'rgb(65, 162, 162)',  
-                'rgb(255, 99, 132)',   
-                'rgb(54, 162, 235)',  
-                'rgb(255, 206, 86)',   
-                'rgb(153, 102, 255)',
-                'rgb(255, 61, 61)'
-            ];
-            return colors[index % colors.length];
+        var SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5"];
+
+        function palette() {
+            return {
+                text: cssVar("--text-dim"),
+                faint: cssVar("--text-faint"),
+                grid: cssVar("--line-soft"),
+                border: cssVar("--line"),
+                panel: cssVar("--panel"),
+                strong: cssVar("--text"),
+                series: SERIES.map(function (name) { return cssVar(name); })
+            };
         }
 
-        // Create datasets dynamically
-        var datasets = allValues.map((values, index) => ({
-            label: allTags[index],
-            data: values,
-            fill: false,
-            borderColor: getColor(index),
-            tension: 0.1
-        }));
+        function build() {
+            var canvas = document.getElementById("myChart");
+            if (!canvas || typeof Chart === "undefined") { return; }
 
-        var data = {
-            datasets: datasets
-        };
+            var c = palette();
 
-        // Make the chart responsive
-        var options = {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                xAxes: [{
-                    type: 'time'
-                }]
-            }
-        };
+            Chart.defaults.font.family =
+                getComputedStyle(document.body).fontFamily;
+            Chart.defaults.font.size = 11;
 
-        new Chart(ctx, {
-            type: "line", 
-            data: data,
-            options: options
-        });
+            var datasets = allValues.map(function (points, i) {
+                var colour = c.series[i % c.series.length];
+                return {
+                    label: allTags[i] || ("Tag " + i),
+                    data: points.map(function (p) { return { x: p[0], y: p[1] }; }),
+                    borderColor: colour,
+                    backgroundColor: colour,
+                    borderWidth: 1.75,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointHoverBorderWidth: 2,
+                    pointHoverBackgroundColor: c.panel,
+                    tension: 0.25,
+                    fill: false
+                };
+            });
 
-        // Dark mode functionality
-        function toggleDarkMode() {
-            document.body.classList.toggle("dark-mode");
-            let darkMode = document.body.classList.contains("dark-mode");
-            localStorage.setItem("darkMode", darkMode);
-        }
+            if (chart) { chart.destroy(); }
 
-        // Update active nav link
-        function updateActiveNavLink() {
-            const currentPath = window.location.pathname;
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === currentPath) {
-                    link.classList.add('active');
+            chart = new Chart(canvas, {
+                type: "line",
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 300 },
+                    interaction: { mode: "index", intersect: false },
+                    layout: { padding: { top: 4, right: 8 } },
+                    scales: {
+                        x: {
+                            type: "time",
+                            time: {
+                                unit: {{ time_unit | tojson }},
+                                tooltipFormat: "dd LLL HH:mm",
+                                displayFormats: {
+                                    minute: "HH:mm",
+                                    hour: "HH:mm",
+                                    day: "dd LLL",
+                                    week: "dd LLL",
+                                    month: "LLL yyyy"
+                                }
+                            },
+                            grid: { color: c.grid, drawTicks: false },
+                            border: { color: c.border },
+                            ticks: {
+                                color: function (ctx) {
+                                    return ctx.tick && ctx.tick.major ? c.text : c.faint;
+                                },
+                                // Day boundaries inside an hourly axis get the date,
+                                // so a week of ticks is not just repeating clock times.
+                                major: { enabled: true },
+                                font: function (ctx) {
+                                    return ctx.tick && ctx.tick.major ? { weight: "600" } : {};
+                                },
+                                maxRotation: 0,
+                                autoSkipPadding: 24,
+                                padding: 8
+                            }
+                        },
+                        y: {
+                            grid: { color: c.grid, drawTicks: false },
+                            border: { display: false },
+                            ticks: { color: c.faint, padding: 10 }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            align: "end",
+                            labels: {
+                                color: c.text,
+                                boxWidth: 18,
+                                boxHeight: 2,
+                                padding: 16
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: c.panel,
+                            titleColor: c.strong,
+                            bodyColor: c.text,
+                            borderColor: c.border,
+                            borderWidth: 1,
+                            padding: 10,
+                            cornerRadius: 5,
+                            displayColors: true,
+                            usePointStyle: true,
+                            callbacks: {
+                                label: function (ctx) {
+                                    return " " + ctx.dataset.label + "  " +
+                                        ctx.parsed.y.toFixed(2) + " " + unit;
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
 
-        // Listen for both Turbo and regular page loads
-        document.addEventListener('turbo:load', updateActiveNavLink);
-        window.addEventListener('load', updateActiveNavLink);
-
-        // Sidebar toggle functionality
-        function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            const mainContent = document.querySelector('.main-content');
-            const toggleIcon = document.getElementById('toggle-icon');
-            
-            sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('expanded');
-            
-            // Update toggle icon
-            if (sidebar.classList.contains('collapsed')) {
-                toggleIcon.textContent = '☰';
-            } else {
-                toggleIcon.textContent = '✕';
-            }
-            
-            // Save state
-            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
-        }
-        
-        // Check if mobile device and auto-collapse sidebar if needed
-        function checkMobileDevice() {
-            if (window.innerWidth <= 576) {
-                document.body.classList.add('mobile-view');
-            } else {
-                document.body.classList.remove('mobile-view');
-            }
-        }
-
-        function onload (){
-            if (localStorage.getItem("darkMode") === "true") {
-                document.body.classList.add("dark-mode");
-                document.getElementById("darkModeSwitch").checked = true;
-            }
-            const sidebar = document.querySelector('.sidebar')
-            // Restore sidebar state
-            if (localStorage.getItem('sidebarCollapsed') === 'true' && !sidebar.classList.contains('collapsed')) {
-                toggleSidebar();
-            } else if (localStorage.getItem('sidebarCollapsed') === 'false' && sidebar.classList.contains('collapsed')) {
-                toggleSidebar();
-            }
-            
-            updateActiveNavLink();
-            checkMobileDevice();
-            
-            // Listen for window resize to handle orientation changes
-            window.addEventListener('resize', checkMobileDevice);
-        }
-        window.onload = onload;
-        window.addEventListener('turbo:load', onload);
-        window.addEventListener('resize', checkMobileDevice);
-    </script>
-</body>
-</html>
+        build();
+        window.addEventListener("themechange", build);
+        document.addEventListener("turbo:before-render", function () {
+            if (chart) { chart.destroy(); chart = null; }
+        });
+    })();
+</script>
+{% endif %}
+{% endblock %}

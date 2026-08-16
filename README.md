@@ -5,7 +5,8 @@
 - Accepts JSON data from Ruuvi Gateway (currently only accepts decoded data)
 - Flask framework, Gunicorn WSGI
 - SocketIO for real-time data
-- Bootstrap for the dashboard layout
+- Chart.js for the history graphs
+- Own stylesheet (`app/static/app.css`), dark theme by default with a light theme toggle
 
 ## 
 ### To run (locally):
