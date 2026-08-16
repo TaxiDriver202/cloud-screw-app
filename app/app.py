@@ -1,11 +1,13 @@
 #SPDX-FileCopyrightText: 2025 Topias Silfverhuth
 #SPDX-License-Identifier: MIT
 
+from os import getenv
+import logging
+import sqlite3
+
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO
-import sqlite3
 import pandas as pd
-import logging
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
@@ -19,7 +21,7 @@ cur.execute("CREATE TABLE IF NOT EXISTS data(id int, temperature float, humidity
 dbconn.commit()
 
 UPDATE_INTERVAL: int = 10
-ADMIN_PASSWORD: str = "javasdk8"
+ADMIN_PASSWORD: str = getenv("RUUVIDASH_PASSWORD", "javasdk8")
 
 updata_counter: int = 0
 
