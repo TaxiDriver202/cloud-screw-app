@@ -23,6 +23,31 @@ updata_counter: int = 0
 tag_names = []
 RTags = {}
 
+# Metric slug -> (heading, unit) used by the graph page.
+METRICS = {
+    "temperature": ("Temperature", "°C"),
+    "humidity": ("Humidity", "%"),
+    "pressure": ("Pressure", "kPa"),
+}
+
+# (value, interval, button label) for the graph page range selector.
+PRESETS = [
+    (1, "hours", "1 hour"),
+    (1, "days", "1 day"),
+    (1, "weeks", "1 week"),
+    (4, "weeks", "1 month"),
+]
+
+# Upper bound on points drawn per sensor; longer ranges get thinned out.
+MAX_POINTS = 600
+
+
+def tag_label(index: int) -> str:
+    """Display name for a sensor, falling back to its index."""
+    if len(tag_names) > index and tag_names[index]:
+        return tag_names[index]
+    return f"Tag {index}"
+
 def update_database():
     try:
         for i, tag in enumerate(RTags.values()):
@@ -61,10 +86,16 @@ def update_data(data):
 
 @app.route("/graph/<item>")
 def graph(item):
-    global tag_names
     try:
+        if item not in METRICS:
+            item = "temperature"
+        metric_label, unit = METRICS[item]
+
         timevalue = request.args.get('value', 1, type=int)
+        timevalue = max(1, min(timevalue or 1, 520))
         interval = request.args.get('interval', 'hours', type=str)
+        if interval not in ("hours", "days", "weeks"):
+            interval = "hours"
         log.debug(f"item: {item}, timevalue: {timevalue}, interval: {interval}")
 
         time = timevalue
@@ -73,42 +104,58 @@ def graph(item):
         elif interval == "days":
             time = time*24
 
-        
+
         df = pd.read_sql(f"SELECT * FROM data where date > datetime('now', 'localtime', '-{time} hours');",\
                           dbconn, index_col=None).groupby('id')
-        for id, obj in df:
-            log.debug(obj)
 
-        
         # Initialize lists to store all data
         all_values = []
         all_tags = []
-        
-        for id, group in df:
-            dates = pd.to_datetime(group.date, errors='coerce').dt.strftime("%d/%m %H:%M").tolist()
-            if item == "humidity":
-                values = list(zip(dates, group.humidity.tolist()))
-            elif item == "pressure":
-                values = list(zip(dates, group.pressure.tolist()))
-            else:
-                values = list(zip(dates, group.temperature.tolist()))
-                
-            all_values.append(values)
-            if tag_names and len(tag_names) > int(id):
-                if tag_names[int(id)] != "":
-                    all_tags.append(tag_names[int(id)])
-            else:
-                all_tags.append(f"tag {id}")
-        
 
-        if not item or (item != "humidity" and item != "pressure" and item != "temperature"):
-            return render_template("graph.html", 
-                                all_values=all_values if all_values else [],
-                                all_tags=all_tags if all_tags else [])
-        
-        return render_template("graph.html", 
-                            all_values=all_values if all_values else [],
-                            all_tags=all_tags if all_tags else [],)
+        for id, group in df:
+            # ISO timestamps so the chart can lay points out on a real time axis.
+            dates = pd.to_datetime(group.date, errors='coerce').dt.strftime("%Y-%m-%dT%H:%M:%S").tolist()
+            values = list(zip(dates, group[item].tolist()))
+
+            # Thin dense ranges: drawing a month of samples is unreadable and slow.
+            if len(values) > MAX_POINTS:
+                step = len(values) // MAX_POINTS + 1
+                thinned = values[::step]
+                if thinned[-1] != values[-1]:
+                    thinned.append(values[-1])
+                values = thinned
+
+            all_values.append(values)
+            all_tags.append(tag_label(int(id)))
+
+        presets = [
+            {"value": v, "interval": i, "label": label,
+             "active": v == timevalue and i == interval}
+            for v, i, label in PRESETS
+        ]
+        range_label = (f"last {interval[:-1]}" if timevalue == 1
+                       else f"last {timevalue} {interval}")
+
+        # Tick granularity: clock times only make sense over a couple of days.
+        if time <= 3:
+            time_unit = "minute"
+        elif time <= 48:
+            time_unit = "hour"
+        else:
+            time_unit = "day"
+
+        return render_template("graph.html",
+                            all_values=all_values,
+                            all_tags=all_tags,
+                            active=item,
+                            metric_label=metric_label,
+                            unit=unit,
+                            value=timevalue,
+                            interval=interval,
+                            presets=presets,
+                            range_label=range_label,
+                            time_unit=time_unit,
+                            point_count=sum(len(v) for v in all_values))
     except Exception as e:
         log.error(e)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -139,7 +186,7 @@ def admin():
     
     passwd: str = request.args.get("pass", type=str)
     weeks: int = request.args.get("weeks", type=int)
-    if passwd == "javasdk8" and weeks >= 0:
+    if passwd == "javasdk8" and weeks is not None and weeks >= 0:
         try:
             cur.execute(f"DELETE FROM data WHERE date < datetime('now', 'localtime', '-{weeks*7} days');")
             dbconn.commit()
@@ -147,14 +194,15 @@ def admin():
         except Exception as e:
             log.error(e)
             return jsonify({"status": "error", "message": str(e)}), 500
-    return render_template("admin.html")
+    return render_template("admin.html", active="admin", tag_names=tag_names)
 
 
 @app.route("/")
 @app.route("/dashboard")
 def dashboard():
     data = {i:tag for (i, tag) in enumerate(RTags.values())}
-    return render_template("dashboard.html", data=data)
+    return render_template("dashboard.html", data=data, tag_names=tag_names,
+                           active="dashboard")
 
 
 @app.route("/request", methods=["POST"])

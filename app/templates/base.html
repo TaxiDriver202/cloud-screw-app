@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2025 Topias Silfverhuth
+     SPDX-License-Identifier: MIT -->
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#0e1211">
+    <title>{% block title %}Ruuvi Dashboard{% endblock %}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/app.css">
+    <script>
+        // Applied before first paint so the page never flashes light.
+        (function () {
+            try {
+                var saved = localStorage.getItem("theme");
+                if (saved === "light" || saved === "dark") {
+                    document.documentElement.dataset.theme = saved;
+                }
+                if (localStorage.getItem("railCollapsed") === "true") {
+                    document.documentElement.classList.add("rail-collapsed");
+                }
+            } catch (e) { /* private mode: stay on the default dark theme */ }
+        })();
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="shell" id="shell">
+        <aside class="rail">
+            <div class="brand">
+                <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>
+                    <path d="M7.4 8.6a6 6 0 0 0 0 6.8M16.6 8.6a6 6 0 0 1 0 6.8"/>
+                    <path d="M4.4 5.9a10 10 0 0 0 0 12.2M19.6 5.9a10 10 0 0 1 0 12.2" opacity=".45"/>
+                </svg>
+                <div class="brand-text">
+                    <div class="brand-name">Ruuvi Dashboard</div>
+                    <div class="brand-sub">Sensor telemetry</div>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <a href="/dashboard" class="nav-link {% if active == 'dashboard' %}active{% endif %}"
+                   data-turbo="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="7" height="8" rx="1.5"/>
+                        <rect x="14" y="3" width="7" height="5" rx="1.5"/>
+                        <rect x="3" y="15" width="7" height="6" rx="1.5"/>
+                        <rect x="14" y="12" width="7" height="9" rx="1.5"/>
+                    </svg>
+                    <span>Live</span>
+                </a>
+                <a href="/graph/temperature" class="nav-link {% if active == 'temperature' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0z"/>
+                        <path d="M12 9v6.2"/>
+                    </svg>
+                    <span>Temp</span>
+                </a>
+                <a href="/graph/humidity" class="nav-link {% if active == 'humidity' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3.2c3.2 3.7 5.5 6.6 5.5 9.4a5.5 5.5 0 1 1-11 0c0-2.8 2.3-5.7 5.5-9.4z"/>
+                        <path d="M9.4 13.6a2.7 2.7 0 0 0 2.6 3" opacity=".55"/>
+                    </svg>
+                    <span>Humidity</span>
+                </a>
+                <a href="/graph/pressure" class="nav-link {% if active == 'pressure' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 17a8 8 0 1 1 16 0"/>
+                        <path d="M12 17l4.2-4.6"/>
+                        <circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none"/>
+                    </svg>
+                    <span>Pressure</span>
+                </a>
+            </nav>
+
+            <div class="rail-foot">
+                {% block rail_status %}{% endblock %}
+                <button type="button" class="icon-btn" id="theme-btn"
+                        aria-label="Switch colour theme" title="Switch colour theme">
+                    <svg class="glyph-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                        <path d="M20 13.4A8.2 8.2 0 0 1 10.6 4a8.4 8.4 0 1 0 9.4 9.4z"/>
+                    </svg>
+                    <svg class="glyph-light" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2.8v2.1M12 19.1v2.1M4.6 4.6l1.5 1.5M17.9 17.9l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.6 19.4l1.5-1.5M17.9 6.1l1.5-1.5"/>
+                    </svg>
+                </button>
+                <button type="button" class="icon-btn rail-toggle" id="rail-btn"
+                        aria-label="Collapse sidebar" title="Collapse sidebar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="16" rx="2"/>
+                        <path d="M9.5 4v16"/>
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="main-inner">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/ui.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
