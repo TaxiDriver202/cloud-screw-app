@@ -9,3 +9,4 @@
 *.local
 *.log
 *.bak
+*.env
