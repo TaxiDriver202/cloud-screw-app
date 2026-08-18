@@ -88,7 +88,7 @@ def update_data(data: dict[str, RuuviTag]) -> dict[str, dict[str, float | str]]:
 
     for mac, tag in data.items():
         RTags[mac] = RuuviTag(
-            mac=tag.mac,
+            id=tag.id,
             temperature=tag.temperature or 0.0,
             humidity=tag.humidity or 0.0,
             pressure=(tag.pressure / 1000.0) or 0.0,

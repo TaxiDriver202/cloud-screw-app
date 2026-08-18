@@ -2,15 +2,18 @@ from pydantic import BaseModel, Field
 
 
 class RuuviTag(BaseModel):
-    mac: str = Field(description="The MAC address of the tag")
+    id: str = Field(description="The MAC address of the tag")
     temperature: float
     humidity: float
     pressure: float
+    accelX: float | None = None
+    accelY: float | None = None
+    accelZ: float | None = None
 
 
 class GatewayData(BaseModel):
     tags: dict[str, RuuviTag]
-    gwmac: str
+    gw_mac: str
 
 
 class GatewayHTTPrequest(BaseModel):
