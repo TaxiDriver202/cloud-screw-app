@@ -38,7 +38,7 @@ dbconn.commit()
 # committing one to the database
 UPDATE_INTERVAL: int = int(getenv("RUUVIDASH_UPDATE_INTERVAL", "10"))
 ADMIN_PASSWORD: str | None = getenv("RUUVIDASH_PASSWORD")
-ANALYSIS_PASSWORD: str | None = getenv("RUUVIDASH_ANALYSIS_PASSWORD")
+ANALYSIS_PASSWORD: str | None = getenv("RUUVIDASH_PASSWORD")
 
 
 def check_analysis_password() -> bool:
