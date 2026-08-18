@@ -34,12 +34,14 @@
             <p class="panel-note">Labels shown on the dashboard cards and in the graph legend.
                Leave a field empty to keep the current name.</p>
             <form id="tags" method="get">
-                {% for i in range(4) %}
+                {% for mac in tags %}
                 <div class="form-row">
-                    <label for="tag{{ i }}">Tag {{ i }}</label>
-                    <input class="field" type="text" id="tag{{ i }}" name="tag{{ i }}"
-                           placeholder="{{ tag_names[i] if tag_names | length > i and tag_names[i] else 'Tag ' ~ i }}">
+                    <label for="tag-{{ mac }}">{{ mac }}</label>
+                    <input class="field" type="text" id="tag-{{ mac }}" name="tag:{{ mac }}"
+                           placeholder="{{ tag_names[mac] if tag_names.get(mac) else 'tag ' ~ mac }}">
                 </div>
+                {% else %}
+                <p class="panel-note">No sensors reporting yet — labels appear here once data arrives.</p>
                 {% endfor %}
                 <button class="btn" type="submit">Save names</button>
             </form>

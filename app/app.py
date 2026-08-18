@@ -6,29 +6,41 @@ import sqlite3
 from os import getenv
 
 import pandas as pd
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
+
+from app.types import GatewayHTTPrequest, RuuviTag
+
+_ = load_dotenv()
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
-log = logging.getLogger("ruuvi-dash")
+log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-dbconn = sqlite3.connect("ruuvidata.db")
+dbconn = sqlite3.connect(getenv("RUUVIDASH_DATABASE_PATH", "ruuvidata.db"))
 cur = dbconn.cursor()
-cur.execute(
-    "CREATE TABLE IF NOT EXISTS data(id int, temperature float, humidity float, pressure float, date timestamptz)"
+_ = cur.execute("DROP TABLE IF EXISTS data")
+_ = cur.execute(
+    "CREATE TABLE IF NOT EXISTS data(mac text, temperature float, humidity float, pressure float, date timestamptz)"
 )
 dbconn.commit()
 
-UPDATE_INTERVAL: int = 10
-ADMIN_PASSWORD: str = getenv("RUUVIDASH_PASSWORD", "javasdk8")
+# Since the Ruuvi Gateway sends data very unpredictably
+# This interval is just how many data points to skip before
+# committing a data point to the database
+UPDATE_INTERVAL: int = int(getenv("RUUVIDASH_UPDATE_INTERVAL", "10"))
+ADMIN_PASSWORD: str | None = getenv("RUUVIDASH_PASSWORD")
+
 
 updata_counter: int = 0
 
-tag_names = []
-RTags = {}
+# Sensor display names, keyed by mac address so they don't depend on
+# gateway report order. Missing entries fall back to f"tag {mac}".
+tag_names: dict[str, str] = {}
+RTags: dict[str, RuuviTag] = {}
 
 # Metric slug -> (heading, unit) used by the graph page.
 METRICS = {
@@ -49,19 +61,17 @@ PRESETS = [
 MAX_POINTS = 600
 
 
-def tag_label(index: int) -> str:
-    """Display name for a sensor, falling back to its index."""
-    if len(tag_names) > index and tag_names[index]:
-        return tag_names[index]
-    return f"Tag {index}"
+def tag_label(mac: str) -> str:
+    """Display name for a sensor, falling back to its mac address."""
+    return tag_names.get(mac) or f"tag {mac}"
 
 
 def update_database():
     try:
-        for i, tag in enumerate(RTags.values()):
-            log.debug(f" i: {i}, tag: {tag}")
+        for mac, tag in RTags.items():
             cur.execute(
-                f"INSERT INTO data(id, temperature, humidity, pressure, date) VALUES ('{i}', {tag.get('temperature')}, {tag.get('humidity')}, {tag.get('pressure', 0)}, datetime('now', 'localtime'));"
+                "INSERT INTO data(mac, temperature, humidity, pressure, date) VALUES (?, ?, ?, ?, datetime('now', 'localtime'));",
+                (mac, tag.temperature, tag.humidity, tag.pressure),
             )
         cur.execute(
             "DELETE FROM data WHERE date < datetime('now', 'localtime', '-1 years');"
@@ -72,20 +82,19 @@ def update_database():
         log.error(" Data collection failed: %s" % e)
 
 
-def update_data(data):
+def update_data(data: dict[str, RuuviTag]) -> dict[str, dict[str, float | str]]:
     global RTags
     global updata_counter
 
-    if len(data) != len(RTags):
-        RTags = {}
+    for mac, tag in data.items():
+        RTags[mac] = RuuviTag(
+            mac=tag.mac,
+            temperature=tag.temperature or 0.0,
+            humidity=tag.humidity or 0.0,
+            pressure=(tag.pressure / 1000.0) or 0.0,
+        )
 
-    for tag in data:
-        RTags[tag] = {
-            "temperature": data[tag].get("temperature", 0),
-            "humidity": data[tag].get("humidity", 0),
-            "pressure": (data[tag].get("pressure", 0) / 1000),
-        }
-    packets = {tag: val for (tag, val) in enumerate(RTags.values())}
+    packets = {mac: tag.model_dump() for (mac, tag) in RTags.items()}
 
     updata_counter += 1
     if updata_counter > UPDATE_INTERVAL:
@@ -122,13 +131,13 @@ def graph(item):
             f"SELECT * FROM data where date > datetime('now', 'localtime', '-{time} hours');",
             dbconn,
             index_col=None,
-        ).groupby("id")
+        ).groupby("mac")
 
         # Initialize lists to store all data
         all_values = []
         all_tags = []
 
-        for id, group in df:
+        for tag_mac, group in df:
             # ISO timestamps so the chart can lay points out on a real time axis.
             dates = (
                 pd.to_datetime(group.date, errors="coerce")
@@ -146,7 +155,7 @@ def graph(item):
                 values = thinned
 
             all_values.append(values)
-            all_tags.append(tag_label(int(id)))
+            all_tags.append(tag_label(str(tag_mac)))
 
         presets = [
             {
@@ -200,24 +209,16 @@ def graph_redirect():
 def admin():
     global tag_names
 
-    names = []
-    for i in range(len(RTags)):
-        names.append(request.args.get(f"tag{i}", "", type=str))
-        # log.debug(request.args.get(f"tag{i}", "", type=str))
-
-    for i, name in enumerate(names):
+    for mac in RTags:
+        name = request.args.get(f"tag:{mac}", "", type=str).strip()
         if name != "":
-            if len(tag_names) > i:
-                tag_names[i] = name
-            else:
-                log.debug(f"appending {name}")
-                tag_names.append(name)
+            tag_names[mac] = name
 
     passwd: str | None = request.args.get("pass", type=str)
     weeks: int | None = request.args.get("weeks", type=int)
     if passwd == ADMIN_PASSWORD and weeks is not None and weeks >= 0:
         try:
-            cur.execute(
+            _ = cur.execute(
                 f"DELETE FROM data WHERE date < datetime('now', 'localtime', '-{weeks * 7} days');"
             )
             dbconn.commit()
@@ -225,13 +226,15 @@ def admin():
         except Exception as e:
             log.error(e)
             return jsonify({"status": "error", "message": str(e)}), 500
-    return render_template("admin.html", active="admin", tag_names=tag_names)
+    return render_template(
+        "admin.html", active="admin", tags=RTags, tag_names=tag_names
+    )
 
 
 @app.route("/")
 @app.route("/dashboard")
 def dashboard():
-    data = {i: tag for (i, tag) in enumerate(RTags.values())}
+    data = {mac: tag.model_dump() for (mac, tag) in RTags.items()}
     return render_template(
         "dashboard.html", data=data, tag_names=tag_names, active="dashboard"
     )
@@ -243,8 +246,10 @@ def request_data():
     Receives gateway data in json and sends processed data to clients through websocket
     """
     try:
-        log.info(request.get_json())
-        tags = request.get_json()["data"]["tags"]
+        json = request.get_json()
+        print(json, "\n\n")
+        gateway_req: GatewayHTTPrequest = GatewayHTTPrequest(data=json["data"])
+        tags: dict[str, RuuviTag] = gateway_req.data.tags
         packets = update_data(tags)
 
         return jsonify({"status": "success", "data": packets}), 200

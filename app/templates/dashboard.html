@@ -45,9 +45,9 @@
 
     var SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5"];
 
-    function tagLabel(id) {
-        var name = tagNames[Number(id)];
-        return name ? name : "Tag " + id;
+    function tagLabel(mac) {
+        var name = tagNames[mac];
+        return name ? name : "tag " + mac;
     }
 
     function fmt(value, digits) {
@@ -56,10 +56,18 @@
             : Number(value).toFixed(digits === undefined ? 2 : digits);
     }
 
-    function card(id, reading) {
+    function seriesIndex(mac) {
+        var hash = 0;
+        for (var i = 0; i < mac.length; i++) {
+            hash = (hash * 31 + mac.charCodeAt(i)) >>> 0;
+        }
+        return hash % SERIES.length;
+    }
+
+    function card(mac, reading) {
         var el = document.createElement("article");
         el.className = "card";
-        el.style.setProperty("--series", "var(" + SERIES[Number(id) % SERIES.length] + ")");
+        el.style.setProperty("--series", "var(" + SERIES[seriesIndex(mac)] + ")");
         el.innerHTML =
             '<div class="card-head">' +
                 '<h2 class="card-name"></h2>' +
@@ -79,8 +87,8 @@
                     '<span class="num" data-pressure></span>' +
                 '</div>' +
             '</div>';
-        el.querySelector(".card-name").textContent = tagLabel(id);
-        el.querySelector(".card-id").textContent = "#" + id;
+        el.querySelector(".card-name").textContent = tagLabel(mac);
+        el.querySelector(".card-id").textContent = mac;
         el.querySelector(".reading-value").textContent = fmt(reading.temperature, 1);
         el.querySelector("[data-humidity]").innerHTML =
             fmt(reading.humidity, 1) + '<span>%</span>';
@@ -90,18 +98,17 @@
     }
 
     function render(data) {
-        var ids = Object.keys(data || {}).filter(function (id) {
-            return data[id] && typeof data[id] === "object";
+        var macs = Object.keys(data || {}).filter(function (mac) {
+            return data[mac] && typeof data[mac] === "object";
         });
 
         grid.innerHTML = "";
-        ids.sort(function (a, b) { return Number(a) - Number(b); })
-           .forEach(function (id) { grid.appendChild(card(id, data[id])); });
+        macs.sort().forEach(function (mac) { grid.appendChild(card(mac, data[mac])); });
 
-        grid.hidden = ids.length === 0;
-        emptyState.hidden = ids.length > 0;
+        grid.hidden = macs.length === 0;
+        emptyState.hidden = macs.length > 0;
 
-        if (ids.length) {
+        if (macs.length) {
             lastUpdate.textContent = new Date().toLocaleTimeString([], {
                 hour: "2-digit", minute: "2-digit", second: "2-digit"
             });
