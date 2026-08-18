@@ -35,7 +35,11 @@
         <h2>AI analysis</h2>
         <p class="panel-note">Ask for an AI read on the current live readings.
            This only runs when you click the button below.</p>
-        <button class="btn" type="button" id="analyze-btn">Analyze current readings</button>
+        <form class="analysis-auth" id="analyze-auth">
+            <input class="field" type="password" id="analyze-password"
+                   placeholder="Password" autocomplete="off">
+            <button class="btn" type="button" id="analyze-btn">Analyze current readings</button>
+        </form>
         <div id="analyze-result" hidden></div>
     </section>
 {% endblock %}
@@ -136,20 +140,59 @@
     socket.on("data_update", render);
 
     (function () {
+        var form = document.getElementById("analyze-auth");
         var btn = document.getElementById("analyze-btn");
+        var passwordField = document.getElementById("analyze-password");
         var result = document.getElementById("analyze-result");
         if (!btn) { return; }
 
+        var STORAGE_KEY = "analysisPassword";
+
+        function showError(message) {
+            result.hidden = false;
+            result.innerHTML = "";
+            var errP = document.createElement("p");
+            errP.className = "notice show";
+            errP.textContent = message;
+            result.appendChild(errP);
+        }
+
+        try {
+            var saved = sessionStorage.getItem(STORAGE_KEY);
+            if (saved) { passwordField.value = saved; }
+        } catch (e) { /* private mode: just ask each time */ }
+
+        form.addEventListener("submit", function (e) { e.preventDefault(); });
+
         btn.addEventListener("click", function () {
+            var password = passwordField.value;
+            if (!password) {
+                passwordField.focus();
+                return;
+            }
+
             btn.disabled = true;
             btn.textContent = "Analyzing...";
             result.hidden = true;
 
-            fetch("/analyze/live", { method: "POST" })
+            fetch("/analyze/live", {
+                method: "POST",
+                headers: { "X-Analysis-Password": password }
+            })
                 .then(function (res) { return res.json().then(function (body) {
-                    return { ok: res.ok, body: body };
+                    return { ok: res.ok, status: res.status, body: body };
                 }); })
                 .then(function (r) {
+                    if (r.status === 401) {
+                        try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+                        showError(r.body.message || "Invalid password");
+                        passwordField.value = "";
+                        passwordField.focus();
+                        return;
+                    }
+
+                    try { sessionStorage.setItem(STORAGE_KEY, password); } catch (e) { /* ignore */ }
+
                     result.hidden = false;
                     result.innerHTML = "";
                     if (r.ok && r.body.status === "success") {
@@ -171,12 +214,7 @@
                     }
                 })
                 .catch(function (err) {
-                    result.hidden = false;
-                    result.innerHTML = "";
-                    var errP = document.createElement("p");
-                    errP.className = "notice show";
-                    errP.textContent = String(err);
-                    result.appendChild(errP);
+                    showError(String(err));
                 })
                 .finally(function () {
                     btn.disabled = false;

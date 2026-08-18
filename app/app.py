@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: 2025 Topias Silfverhuth
 # SPDX-License-Identifier: MIT
 
+import hmac
 import logging
+import secrets
 import sqlite3
 from os import getenv
 
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO
 
 from app.types import GatewayHTTPrequest, RuuviTag
@@ -17,6 +19,7 @@ _ = load_dotenv()
 from app.agent import AnalysisException, analyze_trends
 
 app = Flask(__name__)
+app.secret_key = getenv("RUUVIDASH_SECRET_KEY") or secrets.token_hex(32)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 log = logging.getLogger(__name__)
@@ -34,7 +37,17 @@ dbconn.commit()
 # This interval is just how many requests to skip before
 # committing one to the database
 UPDATE_INTERVAL: int = int(getenv("RUUVIDASH_UPDATE_INTERVAL", "10"))
-ADMIN_PASSWORD: str = getenv("RUUVIDASH_PASSWORD", "javasdk8")
+ADMIN_PASSWORD: str | None = getenv("RUUVIDASH_PASSWORD")
+ANALYSIS_PASSWORD: str | None = getenv("RUUVIDASH_ANALYSIS_PASSWORD")
+
+
+def check_analysis_password() -> bool:
+    """True if the request carries the correct analysis password.
+    Locked out entirely (returns False) if RUUVIDASH_ANALYSIS_PASSWORD isn't set."""
+    if not ANALYSIS_PASSWORD:
+        return False
+    supplied = request.headers.get("X-Analysis-Password", "")
+    return hmac.compare_digest(supplied, ANALYSIS_PASSWORD)
 
 
 updata_counter: int = 0
@@ -213,6 +226,8 @@ def analyze_graph(item):
     Runs an on-demand AI analysis over the currently displayed graph range.
     Only invoked when the user explicitly requests it from the graph page.
     """
+    if not check_analysis_password():
+        return jsonify({"status": "error", "message": "Invalid password"}), 401
     try:
         if item not in METRICS:
             item = "temperature"
@@ -254,6 +269,8 @@ def analyze_live():
     Runs an on-demand AI analysis over the current live readings.
     Only invoked when the user explicitly requests it from the dashboard.
     """
+    if not check_analysis_password():
+        return jsonify({"status": "error", "message": "Invalid password"}), 401
     try:
         if not RTags:
             return jsonify(
@@ -276,18 +293,34 @@ def analyze_live():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/supersecretadmin")
+def admin_authenticated() -> bool:
+    return bool(ADMIN_PASSWORD) and session.get("admin_authenticated") is True
+
+
+@app.route("/supersecretadmin", methods=["GET", "POST"])
 def admin():
     global tag_names
+
+    if request.method == "POST" and "pass" in request.form:
+        passwd = request.form.get("pass", "", type=str)
+        if ADMIN_PASSWORD and hmac.compare_digest(passwd, ADMIN_PASSWORD):
+            session["admin_authenticated"] = True
+        else:
+            return render_template(
+                "admin.html", active="admin", authenticated=False, login_error=True
+            )
+        return redirect(url_for("admin"))
+
+    if not admin_authenticated():
+        return render_template("admin.html", active="admin", authenticated=False)
 
     for mac in RTags:
         name = request.args.get(f"tag:{mac}", "", type=str).strip()
         if name != "":
             tag_names[mac] = name
 
-    passwd: str | None = request.args.get("pass", type=str)
     weeks: int | None = request.args.get("weeks", type=int)
-    if passwd == ADMIN_PASSWORD and weeks is not None and weeks >= 0:
+    if weeks is not None and weeks >= 0:
         try:
             _ = cur.execute(
                 f"DELETE FROM data WHERE date < datetime('now', 'localtime', '-{weeks * 7} days');"
@@ -298,8 +331,18 @@ def admin():
             log.error(e)
             return jsonify({"status": "error", "message": str(e)}), 500
     return render_template(
-        "admin.html", active="admin", tags=RTags, tag_names=tag_names
+        "admin.html",
+        active="admin",
+        authenticated=True,
+        tags=RTags,
+        tag_names=tag_names,
     )
+
+
+@app.route("/supersecretadmin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("admin_authenticated", None)
+    return redirect(url_for("admin"))
 
 
 @app.route("/")

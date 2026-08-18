@@ -5,9 +5,38 @@
 {% block title %}Admin · Ruuvi Dashboard{% endblock %}
 
 {% block content %}
+    {% if not authenticated %}
     <header class="page-head">
         <h1 class="page-title">Admin</h1>
-        <div class="page-meta">Housekeeping and sensor labels</div>
+        <div class="page-meta">Sign in required</div>
+    </header>
+
+    <div class="stack">
+        <section class="panel login-panel">
+            <h2>Sign in</h2>
+            <p class="panel-note">Enter the admin password to manage sensor names and prune history.</p>
+            <form method="post">
+                <div class="form-row">
+                    <label for="pass">Password</label>
+                    <input class="field" type="password" id="pass" name="pass"
+                           autocomplete="current-password" autofocus>
+                </div>
+                <button class="btn" type="submit">Sign in</button>
+            </form>
+            {% if login_error %}
+            <div class="notice show">Incorrect password.</div>
+            {% endif %}
+        </section>
+    </div>
+    {% else %}
+    <header class="page-head">
+        <h1 class="page-title">Admin</h1>
+        <div class="page-meta">
+            Housekeeping and sensor labels
+            <form method="post" action="{{ url_for('admin_logout') }}" class="logout-form">
+                <button class="btn btn-ghost" type="submit">Sign out</button>
+            </form>
+        </div>
     </header>
 
     <div class="stack">
@@ -15,10 +44,6 @@
             <h2>Prune history</h2>
             <p class="panel-note">Permanently deletes stored readings older than the given age.</p>
             <form id="del" method="get">
-                <div class="form-row">
-                    <label for="pass">Password</label>
-                    <input class="field" type="password" id="pass" name="pass" autocomplete="off">
-                </div>
                 <div class="form-row">
                     <label for="weeks">Delete older than</label>
                     <input class="field num" type="number" id="weeks" name="weeks" min="0" style="max-width: 110px">
@@ -47,9 +72,11 @@
             </form>
         </section>
     </div>
+    {% endif %}
 {% endblock %}
 
 {% block scripts %}
+{% if authenticated %}
 <script>
     (function () {
         var form = document.getElementById("del");
@@ -67,4 +94,5 @@
         } catch (e) { /* ignore */ }
     })();
 </script>
+{% endif %}
 {% endblock %}
