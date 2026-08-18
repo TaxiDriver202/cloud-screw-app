@@ -22,6 +22,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "markupsafe>=3.0.3",
     "numpy>=2.4.4",
+    "openai>=2.54.0",
     "packaging>=26.0",
     "pandas>=3.0.2",
     "pandas-stubs>=3.0.5.260730",

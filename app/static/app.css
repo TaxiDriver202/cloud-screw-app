@@ -627,6 +627,43 @@ select.field { cursor: pointer; }
 
 .notice.show { display: flex; }
 
+/* --------------------------------------------------------- ai analysis */
+
+.analysis-panel {
+    margin-top: 32px;
+    padding: 14px 16px;
+    background: transparent;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    box-shadow: none;
+}
+
+.analysis-panel h2 {
+    font-size: 0.82rem;
+    font-weight: 550;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.analysis-panel .panel-note { margin-bottom: 12px; }
+
+.analysis-panel .btn {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 0.78rem;
+    border-color: var(--line);
+    background: transparent;
+    color: var(--text-dim);
+}
+
+.analysis-panel .btn:hover {
+    background: var(--line-soft);
+    color: var(--text);
+}
+
+.analysis-panel .notice { font-size: 0.82rem; }
+
 /* --------------------------------------------------------- wide layout */
 
 @media (min-width: 900px) {

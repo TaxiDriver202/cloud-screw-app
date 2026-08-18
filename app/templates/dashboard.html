@@ -30,6 +30,14 @@
         <p>Readings appear here as soon as the Ruuvi Gateway posts data to
            <span class="num">/request</span>.</p>
     </div>
+
+    <section class="analysis-panel" id="ai-analysis">
+        <h2>AI analysis</h2>
+        <p class="panel-note">Ask for an AI read on the current live readings.
+           This only runs when you click the button below.</p>
+        <button class="btn" type="button" id="analyze-btn">Analyze current readings</button>
+        <div id="analyze-result" hidden></div>
+    </section>
 {% endblock %}
 
 {% block scripts %}
@@ -126,5 +134,55 @@
     socket.on("connect", function () { setConnected(true); });
     socket.on("disconnect", function () { setConnected(false); });
     socket.on("data_update", render);
+
+    (function () {
+        var btn = document.getElementById("analyze-btn");
+        var result = document.getElementById("analyze-result");
+        if (!btn) { return; }
+
+        btn.addEventListener("click", function () {
+            btn.disabled = true;
+            btn.textContent = "Analyzing...";
+            result.hidden = true;
+
+            fetch("/analyze/live", { method: "POST" })
+                .then(function (res) { return res.json().then(function (body) {
+                    return { ok: res.ok, body: body };
+                }); })
+                .then(function (r) {
+                    result.hidden = false;
+                    result.innerHTML = "";
+                    if (r.ok && r.body.status === "success") {
+                        var data = r.body.data;
+                        if (data.deviation) {
+                            var notice = document.createElement("p");
+                            notice.className = "notice show";
+                            notice.textContent = "Notable deviation detected";
+                            result.appendChild(notice);
+                        }
+                        var p = document.createElement("p");
+                        p.textContent = data.analysis;
+                        result.appendChild(p);
+                    } else {
+                        var errP = document.createElement("p");
+                        errP.className = "notice show";
+                        errP.textContent = r.body.message || "Analysis failed";
+                        result.appendChild(errP);
+                    }
+                })
+                .catch(function (err) {
+                    result.hidden = false;
+                    result.innerHTML = "";
+                    var errP = document.createElement("p");
+                    errP.className = "notice show";
+                    errP.textContent = String(err);
+                    result.appendChild(errP);
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = "Analyze current readings";
+                });
+        });
+    })();
 </script>
 {% endblock %}

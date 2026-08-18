@@ -14,6 +14,8 @@ from app.types import GatewayHTTPrequest, RuuviTag
 
 _ = load_dotenv()
 
+from app.agent import AnalysisException, analyze_trends
+
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
@@ -22,17 +24,17 @@ logging.basicConfig(level=logging.DEBUG)
 
 dbconn = sqlite3.connect(getenv("RUUVIDASH_DATABASE_PATH", "ruuvidata.db"))
 cur = dbconn.cursor()
-_ = cur.execute("DROP TABLE IF EXISTS data")
+# _ = cur.execute("DROP TABLE IF EXISTS data")
 _ = cur.execute(
     "CREATE TABLE IF NOT EXISTS data(mac text, temperature float, humidity float, pressure float, date timestamptz)"
 )
 dbconn.commit()
 
 # Since the Ruuvi Gateway sends data very unpredictably
-# This interval is just how many data points to skip before
-# committing a data point to the database
+# This interval is just how many requests to skip before
+# committing one to the database
 UPDATE_INTERVAL: int = int(getenv("RUUVIDASH_UPDATE_INTERVAL", "10"))
-ADMIN_PASSWORD: str | None = getenv("RUUVIDASH_PASSWORD")
+ADMIN_PASSWORD: str = getenv("RUUVIDASH_PASSWORD", "javasdk8")
 
 
 updata_counter: int = 0
@@ -203,6 +205,75 @@ def graph(item):
 @app.route("/graph/")
 def graph_redirect():
     return graph("temperature")
+
+
+@app.route("/analyze/<item>", methods=["POST"])
+def analyze_graph(item):
+    """
+    Runs an on-demand AI analysis over the currently displayed graph range.
+    Only invoked when the user explicitly requests it from the graph page.
+    """
+    try:
+        if item not in METRICS:
+            item = "temperature"
+
+        timevalue = request.args.get("value", 1, type=int)
+        timevalue = max(1, min(timevalue or 1, 520))
+        interval = request.args.get("interval", "hours", type=str)
+        if interval not in ("hours", "days", "weeks"):
+            interval = "hours"
+
+        time = timevalue
+        if interval == "weeks":
+            time = time * 24 * 7
+        elif interval == "days":
+            time = time * 24
+
+        df = pd.read_sql(
+            f"SELECT mac, {item}, date FROM data where date > datetime('now', 'localtime', '-{time} hours') ORDER BY date;",
+            dbconn,
+        )
+        if df.empty:
+            return jsonify(
+                {"status": "error", "message": "No data available for this range"}
+            ), 400
+
+        result = analyze_trends(df.to_csv(index=False))
+        return jsonify({"status": "success", "data": result.model_dump()}), 200
+    except AnalysisException as e:
+        log.error(e)
+        return jsonify({"status": "error", "message": str(e)}), 502
+    except Exception as e:
+        log.error(e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/analyze/live", methods=["POST"])
+def analyze_live():
+    """
+    Runs an on-demand AI analysis over the current live readings.
+    Only invoked when the user explicitly requests it from the dashboard.
+    """
+    try:
+        if not RTags:
+            return jsonify(
+                {"status": "error", "message": "No live readings available"}
+            ), 400
+
+        rows = [
+            f"{mac},{tag_label(mac)},{tag.temperature},{tag.humidity},{tag.pressure}"
+            for mac, tag in RTags.items()
+        ]
+        csv_data = "mac,name,temperature,humidity,pressure\n" + "\n".join(rows)
+
+        result = analyze_trends(csv_data)
+        return jsonify({"status": "success", "data": result.model_dump()}), 200
+    except AnalysisException as e:
+        log.error(e)
+        return jsonify({"status": "error", "message": str(e)}), 502
+    except Exception as e:
+        log.error(e)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/supersecretadmin")
