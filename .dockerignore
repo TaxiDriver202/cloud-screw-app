@@ -1,0 +1,7 @@
+.venv
+.git
+.env
+__pycache__
+*.pyc
+ruuvidata.db
+.DS_Store
