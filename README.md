@@ -1,23 +1,30 @@
-# Cloud Screw App
-
-"Cloud Screw App" is a small flask web application designed to accept JSON data from the Ruuvi Gateway and display it on a dashboard.
+Ruuvi Dash is a small flask web application designed to accept and store weather data from the Ruuvi Gateway and display it on a dashboard.
 
 - Accepts JSON data from Ruuvi Gateway (currently only accepts decoded data)
-- Flask framework, Gunicorn WSGI
-- SocketIO for real-time data
-- Chart.js for the history graphs
-- Own stylesheet (`app/static/app.css`), dark theme by default with a light theme toggle
+- Dashboard updates in real time with web sockets
+- Graphing of data from sqlite database
 
-## 
-### To run (locally):
+##
+
+### To run:
+
 First install required modules:
+
 ```
-pip install -r requirements.txt 
+uv sync
 ```
+
 Then run with gunicorn:
-```
-gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --bind localhost:[PORT] app.app:app
-```
-- Replace [PORT] with port of your choosing
 
+```
+gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --bind localhost:8000 app.app:app
+```
+alternatively, to run with docker:
+```
+docker build -t ruuvidash .
+docker run -d -p 8000:8000 ruuvidash
+```
 
+Then in your Ruuvi Gateway settings, choose custom and set the URL of where you're hosting ruuvi-dash.
+For example:
+www.ruuvidash.xyz/request
