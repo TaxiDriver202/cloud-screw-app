@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import hmac
+import json
 import logging
 import secrets
 import sqlite3
@@ -54,7 +55,7 @@ updata_counter: int = 0
 
 # Sensor display names, keyed by mac address so they don't depend on
 # gateway report order. Missing entries fall back to f"tag {mac}".
-tag_names: dict[str, str] = {}
+tag_names: dict[str, str] = json.loads(getenv("TAG_NAMES", "{}"))
 RTags: dict[str, RuuviTag] = {}
 
 # Metric slug -> (heading, unit) used by the graph page.
@@ -73,7 +74,7 @@ PRESETS = [
 ]
 
 # Upper bound on points drawn per sensor; longer ranges get thinned out.
-MAX_POINTS = 600
+MAX_POINTS = 800
 
 
 def tag_label(mac: str) -> str:
